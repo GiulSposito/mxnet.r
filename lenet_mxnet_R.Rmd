@@ -1,0 +1,158 @@
+---
+title: "Implementing LeNet with MXNET in R"
+author: "Giuliano Sposito"
+output: html_notebook
+---
+
+In this [R Notebook](http://rmarkdown.rstudio.com/r_notebooks.html) I implemented an [Convolutional Neural Network (CNN)](https://en.wikipedia.org/wiki/Convolutional_neural_network) using the [MNIST Database](http://yann.lecun.com/exdb/mnist/) for handwritten digits recognition using [MXNet](http://mxnet.io/) framework for [R](https://www.r-project.org/).
+
+## Setup
+
+You will need to install the [MXNet for R](http://mxnet.io/get_started/windows_setup.html) and, if you intent to use your GPU card, the [NVidia CUDA Drivers](http://www.nvidia.com/object/cuda_home_new.html).
+
+Download all four dataset files from [MNIST site](http://yann.lecun.com/exdb/mnist/) and gunzip them in the project directory.
+
+Finally, load the libraries.
+
+
+```{r setup}
+
+library(mxnet)    # ann framework
+library(magrittr) # to use modeling the framework
+library(caret)    # to use to check the performace
+
+```
+
+
+## Loading dataset
+
+We'll use an adaptation of [gist from Brendan o'Connor](http://gist.github.com/39760) to read the files transforming them in a structure simple to use and access.
+
+```{r load_dataset, cache=TRUE}
+
+# read function returns a list of datasets
+load_mnist <- function() {
+  load_image_file <- function(filename) {
+    ret = list()
+    f = file(filename,'rb')
+    readBin(f,'integer',n=1,size=4,endian='big')
+    ret$n = readBin(f,'integer',n=1,size=4,endian='big')
+    nrow = readBin(f,'integer',n=1,size=4,endian='big')
+    ncol = readBin(f,'integer',n=1,size=4,endian='big')
+    x = readBin(f,'integer',n=ret$n*nrow*ncol,size=1,signed=F)
+    ret$x = matrix(x, ncol=nrow*ncol, byrow=T)
+    close(f)
+    ret
+  }
+  load_label_file <- function(filename) {
+    f = file(filename,'rb')
+    readBin(f,'integer',n=1,size=4,endian='big')
+    n = readBin(f,'integer',n=1,size=4,endian='big')
+    y = readBin(f,'integer',n=n,size=1,signed=F)
+    close(f)
+    y
+  }
+  train <- load_image_file('./data/train-images-idx3-ubyte')
+  test <- load_image_file('./data/t10k-images-idx3-ubyte')
+  
+  train$y <- load_label_file('./data/train-labels-idx1-ubyte')
+  test$y <- load_label_file('./data/t10k-labels-idx1-ubyte')  
+  
+  return(
+    list(
+      train = train,
+      test = test
+    )
+  )
+}
+
+# plot one case
+show_digit <- function(arr784, col=gray(12:1/12), ...) {
+  image(matrix(arr784, nrow=28)[,28:1], col=col, ...)
+}
+
+# load
+mnist <- load_mnist()
+
+```
+
+
+Let's check the dataset
+
+```{r check_dataset, cache=TRUE, fig.width=10, fig.height=2}
+
+par(mfrow=c(1,5), mar=c(0.1,0.1,0.1,0.1))
+for(i in 1:5) show_digit(mnist$train$x[i,])
+
+labels <- paste(mnist$train$y[1:5],collapse = " | ")
+
+```
+
+
+Labels: `r labels`
+
+
+## Convolutional Neural Network
+
+### LeNet
+
+!(LeNet CNN Architecture)[http://www.pyimagesearch.com/wp-content/uploads/2016/06/lenet_architecture.png]
+
+### Magrittr
+
+
+```{r pipe_operator, cache=TRUE}
+
+# pipe assign function
+# example:  rnorm(5,mean=5) %>% sqrt() %=>% "varname" %>% mean()
+
+"%=>%" <- function(val,var) {
+  assign(substitute(var),val, envir = .GlobalEnv)
+  return(val)
+}
+
+```
+
+
+### Neural Network
+
+```{r network, cache=TRUE}
+
+# input data
+lenet <- mx.symbol.Variable("data") %>%
+  
+  # Convolutional Layer Set 1 ( Conv > Tanh > Pool )
+  mx.symbol.Convolution( kernel=c(5,5), num_filter=20, name="Conv1" )  %=>% "Conv1" %>%
+  mx.symbol.Activation( act_type="tanh", name="Act1" )                 %=>% "Act1" %>%
+  mx.symbol.Pooling( pool_type="max", kernel=c(2,2), 
+                     stride=c(2,2), name = "Pool1")                    %=>% "Pool1" %>%
+  
+  # Convolutional Layer Set 1 ( Conv > Tanh > Pool )
+  mx.symbol.Convolution( kernel=c(5,5), num_filter=50 , name="Conv2")  %=>% "Conv2" %>%
+  mx.symbol.Activation( act_type="tanh", name="Act2" )                 %=>% "Act2" %>%
+  mx.symbol.Pooling( pool_type="max", kernel=c(2,2),
+                     stride=c(2,2), name = "Pool2")                    %=>% "Pool2" %>%
+  
+  # Flat representation 50 2D filters -> 1D Array
+  mx.symbol.flatten( name="Flat")                                      %=>% "Flat1" %>%
+  
+  # Fully Connected Layer 1
+  mx.symbol.FullyConnected( num_hidden=500, name="Full1" )             %=>% "Full1" %>%
+  mx.symbol.Activation( act_type="tanh", name="Act3" )                 %=>% "Act3" %>%
+  
+  # Fully Connected Layer 1
+  mx.symbol.FullyConnected( num_hidden=10 , name="Full2")              %=>% "Full2" %>%
+  mx.symbol.SoftmaxOutput(name="SoftM")                                %=>% "SoftM" 
+
+
+```
+
+Checking the model built
+
+```{r viz_network, cache=TRUE, fig.height=1, fig.width=10, fig.align='center'}
+
+graph.viz( lenet, direction = "LR" )
+
+```
+
+
