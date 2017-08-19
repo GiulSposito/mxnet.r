@@ -1,7 +1,9 @@
 ---
 title: "Implementing LeNet with MXNET in R"
 author: "Giuliano Sposito"
-output: html_notebook
+output:
+  html_notebook: default
+  html_document: default
 ---
 
 In this [R Notebook](http://rmarkdown.rstudio.com/r_notebooks.html) I implemented an [Convolutional Neural Network (CNN)](https://en.wikipedia.org/wiki/Convolutional_neural_network) using the [MNIST Database](http://yann.lecun.com/exdb/mnist/) for handwritten digits recognition using [MXNet](http://mxnet.io/) framework for [R](https://www.r-project.org/).
@@ -15,7 +17,7 @@ Download all four dataset files from [MNIST site](http://yann.lecun.com/exdb/mni
 Finally, load the libraries.
 
 
-```{r setup}
+```{r setup, cache=TRUE, message=FALSE, warning=FALSE}
 
 library(mxnet)    # ann framework
 library(magrittr) # to use modeling the framework
@@ -79,12 +81,12 @@ mnist <- load_mnist()
 
 Let's check the dataset
 
+
 ```{r check_dataset, cache=TRUE, fig.width=10, fig.height=2}
 
+labels <- paste(mnist$train$y[1:5],collapse = ", ")
 par(mfrow=c(1,5), mar=c(0.1,0.1,0.1,0.1))
 for(i in 1:5) show_digit(mnist$train$x[i,])
-
-labels <- paste(mnist$train$y[1:5],collapse = " | ")
 
 ```
 
@@ -96,7 +98,7 @@ Labels: `r labels`
 
 ### LeNet
 
-!(LeNet CNN Architecture)[http://www.pyimagesearch.com/wp-content/uploads/2016/06/lenet_architecture.png]
+![LeNet CNN Architecture](http://www.pyimagesearch.com/wp-content/uploads/2016/06/lenet_architecture.png)
 
 ### Magrittr
 
@@ -155,4 +157,102 @@ graph.viz( lenet, direction = "LR" )
 
 ```
 
+## Training
+
+```{r train, cache=TRUE}
+
+# Resizing the dataset from 10000 x 784 to (28 x 28) x 1 x 100000
+
+# train
+tr.x <- t(mnist$train$x)
+dim(tr.x) <- c(28,28,1,ncol(tr.x))
+
+# test
+ts.x <- t(mnist$test$x)
+dim(ts.x) <- c(28,28,1,ncol(ts.x))
+
+# training
+mx.set.seed(42)  # the life, the universe and everything
+ti <- proc.time()
+model <- mx.model.FeedForward.create(lenet, X=tr.x, y=mnist$train$y,
+                                     ctx=mx.cpu(), num.round=2, array.batch.size=100,
+                                     learning.rate=0.05, momentum=0.9, wd=0.00001,
+                                     eval.metric=mx.metric.accuracy,
+                                     epoch.end.callback=mx.callback.log.train.metric(100))
+te <- proc.time()
+print(te-ti)
+
+```
+
+
+## Evaluation
+
+### Confusion Matrix
+
+```{r eval_cm}
+
+# process the validation dataset
+outputs <- predict(model,ts.x)
+
+# the output is a 10 x 10000 matrix
+# transpose to transform in a tidy dataset ( cases x result ) 
+t_outputs <- t(outputs)
+
+# the last layer is a softmax agregator
+# so, each column of the dataset is de probability of a value from 0 to 9
+# lets get the biggest probability for each test case
+y_hat <- max.col(t_outputs)-1 # base index is 1
+
+cm <- confusionMatrix(y_hat,mnist$test$y)
+cm$table
+
+```
+
+### Overal Performance
+
+```{r eval_perf}
+
+cm$overall
+
+```
+
+
+## Visualizing the worst cases
+
+### Worst Case
+
+```{r worst_case}
+
+# found where the network most fail
+errors <- cm$table
+diag(errors) <- 0   
+
+worst <- which( errors==max(errors), arr.ind = T) - 1
+
+worst
+```
+
+### Finding mismatching cases
+
+
+```{r worst_cases, fig.width=10, fig.height=2}
+
+worst.idx <- mnist$test$y == worst[1,"Reference"] & y_hat == worst[1,"Prediction"]
+worstcases <- mnist$test$x[worst.idx,]
+
+par(mfrow=c(2,5), mar=c(0.1,0.1,0.1,0.1))
+for(i in 1:10) show_digit(worstcases[i,])
+
+```
+
+Indeed some cases are remarkable difficult to identify as five, like the 2nd, 3rd, 6th, 9th and 10th.
+
+```{r worst_predictions, fig.width=10, fig.height=2}
+
+wpred <- t_outputs[ worst.idx, ]
+par(mfrow=c(2,5), mar=c(0.1,0.1,0.1,0.1))
+for(i in 1:10) barplot(wpred[i,])
+
+
+```
 
