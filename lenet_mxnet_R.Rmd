@@ -2,8 +2,8 @@
 title: "Implementing LeNet with MXNET in R"
 author: "Giuliano Sposito"
 output:
-  html_notebook: default
   html_document: default
+  html_notebook: default
 ---
 
 In this [R Notebook](http://rmarkdown.rstudio.com/r_notebooks.html) I implemented an [Convolutional Neural Network (CNN)](https://en.wikipedia.org/wiki/Convolutional_neural_network) using the [MNIST Database](http://yann.lecun.com/exdb/mnist/) for handwritten digits recognition using [MXNet](http://mxnet.io/) framework for [R](https://www.r-project.org/).
@@ -159,7 +159,7 @@ graph.viz( lenet, direction = "LR" )
 
 ## Training
 
-```{r train, cache=TRUE}
+```{r train, cache=TRUE, warning=FALSE, message=FALSE}
 
 # Resizing the dataset from 10000 x 784 to (28 x 28) x 1 x 100000
 
@@ -172,17 +172,38 @@ ts.x <- t(mnist$test$x)
 dim(ts.x) <- c(28,28,1,ncol(ts.x))
 
 # training
+logger.epoc <- mx.callback.log.train.metric(100)
+logger.batch <- mx.metric.logger$new()
 mx.set.seed(42)  # the life, the universe and everything
 ti <- proc.time()
-model <- mx.model.FeedForward.create(lenet, X=tr.x, y=mnist$train$y,
-                                     ctx=mx.cpu(), num.round=2, array.batch.size=100,
-                                     learning.rate=0.05, momentum=0.9, wd=0.00001,
+model <- mx.model.FeedForward.create(lenet, 
+                                     X=tr.x, 
+                                     y=mnist$train$y,
+                                     eval.data=list(
+                                       data=ts.x, 
+                                       label=mnist$test$y),
+                                     ctx=mx.cpu(), 
+                                     num.round=20, 
+                                     array.batch.size=100,
+                                     learning.rate=0.05, 
+                                     momentum=0.9, 
+                                     wd=0.00001,
                                      eval.metric=mx.metric.accuracy,
-                                     epoch.end.callback=mx.callback.log.train.metric(100))
+                                     epoch.end.callback=logger.epoc,
+                                     batch.end.callback=mx.callback.log.train.metric(1, logger.batch))
 te <- proc.time()
 print(te-ti)
 
+mx.model.save(model, "mnistModel",1)
+
 ```
+
+## Train evolution
+
+```{r}
+plot(logger.batch$train, main = "Train Evolution", ylab="Accuracy", xlab="Batchs")
+```
+
 
 
 ## Evaluation
@@ -255,4 +276,109 @@ for(i in 1:10) barplot(wpred[i,])
 
 
 ```
+
+## Inspecting the network layers
+
+### Binding and Feed Forward
+
+```{r bind}
+
+# use the layer's references to build a group symbol
+# create an executor to controls the network
+out <- mx.symbol.Group(c(Conv1, Act1, Pool1, Conv2, Act2, Pool2, Flat1, Full1, Full2, SoftM))
+executor <- mx.simple.bind(symbol = out,  data=dim(ts.x), ctx=mx.cpu())
+
+# transfer the arguments and parameters learned
+mx.exec.update.arg.arrays(executor, model$arg.params, match.name = T)
+mx.exec.update.aux.arrays(executor, model$aux.params, match.name = T)
+
+# prepare the input
+mx.exec.update.arg.arrays(executor, list(data=mx.nd.array(ts.x)), match.name=TRUE)
+
+# Feedforward: propagates the input to output throught the network
+mx.exec.forward(executor, is.train=FALSE)
+
+# list the output elements
+names(executor$ref.outputs)
+
+```
+
+## Convolution Layer One
+
+### Conv Filters
+
+```{r}
+
+# choosing the first worst case
+j <- which( worst.idx==T )[1]
+
+# Conv1 Filters
+par(mfrow=c(4,5), mar=c(0.1,0.1,0.1,0.1))
+for (i in 1:20) {
+  outputData <- as.array(executor$ref.outputs$Conv1_output)[,,i,j]
+  image(outputData[,24:1],
+        xaxt='n', yaxt='n')
+}
+
+```
+
+
+### Activation
+
+```{r}
+par(mfrow=c(4,5), mar=c(0.1,0.1,0.1,0.1))
+for (i in 1:20) {
+  outputData <- as.array(executor$ref.outputs$Act1_output)[,,i,j]
+  image(outputData[,24:1],
+        xaxt='n', yaxt='n')
+}
+```
+
+
+### Pooling
+
+```{r}
+par(mfrow=c(4,5), mar=c(0.1,0.1,0.1,0.1))
+for (i in 1:20) {
+  outputData <- as.array(executor$ref.outputs$Pool1_output)[,,i,j]
+  image(outputData[,12:1],
+        xaxt='n', yaxt='n')
+}
+```
+
+## Convolutional Layer Two
+
+### Filters
+
+```{r}
+par(mfrow=c(7,7), mar=c(0.1,0.1,0.1,0.1))
+for (i in 1:49) {
+  outputData <- as.array(executor$ref.outputs$Conv2_output)[,,i,j]
+  image(outputData[,8:1],
+        xaxt='n', yaxt='n')
+}
+```
+
+### Activations
+
+```{r}
+par(mfrow=c(7,7), mar=c(0.1,0.1,0.1,0.1))
+for (i in 1:49) {
+  outputData <- as.array(executor$ref.outputs$Act2_output)[,,i,j]
+  image(outputData[,8:1],
+        xaxt='n', yaxt='n')
+}
+```
+
+### Pooling
+
+```{r}
+par(mfrow=c(7,7), mar=c(0.1,0.1,0.1,0.1))
+for (i in 1:49) {
+  outputData <- as.array(executor$ref.outputs$Pool2_output)[,,i,j]
+  image(outputData[,4:1],
+        xaxt='n', yaxt='n')
+}
+```
+
 
