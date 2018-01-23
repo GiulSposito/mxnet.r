@@ -3,8 +3,9 @@
 .RData
 .Ruserdata
 *.nb.html
+*.html
 *cache*
 *files*
 data
 images
-*.html
+
