@@ -82,10 +82,11 @@ res <- apply(compare, 1, function(x,m=centroids){
 centroids_diff <- bind_cols(compare, res)
 
 # plot them
-par(mfrow=c(10,10), mar=c(0.1,0.1,0.1,0.1))
+par(mfrow=c(10,10), mar=c(0,0,0,0))
 colFunc <- colorRampPalette(c("red","white","blue"))
 res <- sapply(1:100, FUN=function(x) show_digit(as.matrix(centroids_diff[x,3:786]),
-                                                col=colFunc(35)))
+                                                col=colFunc(35),
+                                                axes=F))
 
 # calculating the distance between the centroids in 786 dimensions
 dist <- apply(compare,1,function(x,m=centroids){
