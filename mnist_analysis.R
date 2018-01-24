@@ -1,3 +1,6 @@
+# setup
+library(tidyverse)
+
 
 ### load database
 
@@ -38,7 +41,7 @@ load_mnist <- function() {
 }
 
 # plot one case
-show_digit <- function(arr784, col=gray(12:1/12), ...) {
+show_digit <- function(arr784, col=gray(25:1/25), ...) {
   image(matrix(arr784, nrow=28)[,28:1], col=col, ...)
 }
 
@@ -71,22 +74,22 @@ res <- apply(compare, 1, function(x,m=x_mean){
 
 result <- bind_cols(compare, res)
 
-dim(result)
-
 par(mfrow=c(10,10), mar=c(0.1,0.1,0.1,0.1))
-res <- sapply(1:100, FUN=function(x) show_digit(as.matrix(result[x,3:786])))
+colFunc <- colorRampPalette(c("red","white","blue"))
+res <- sapply(1:100, FUN=function(x) show_digit(as.matrix(result[x,3:786]),
+                                                col=colFunc(35)))
 
 
-a <- c(1,3,2,1)
-b <- c(2,4,3,2)
+dist <- apply(compare,1,function(x,m=x_mean){
+  sqrt(mean((unlist(m[x[1]+1])-unlist(m[x[2]+1]))^2))  
+}) %>% as_tibble()
 
-sqrt(mean((a-b)^2))
+res_dist <- bind_cols(compare,dist)
 
-
-ggplot(digit_differences, aes(x, y, fill = positive - negative)) +
-  geom_tile() +
-  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = .5) +
-  facet_grid(compare2 ~ compare1) +
-  theme_void() +
-  labs(title = "Pixels that distinguish pairs of MNIST images",
-       subtitle = "Red means the pixel is darker for that row's digit, and blue means the pixel is darker for that column's digit.")
+ggplot(res_dist, aes(x=comp1, y=comp2, fill=value)) +
+  geom_tile() + 
+  geom_text(aes(label=round(value))) +
+  scale_fill_gradient2(low = "blue", high = "red") +
+  scale_x_continuous(breaks=0:9) + 
+  scale_y_continuous(breaks=0:9) + 
+  theme_bw()
