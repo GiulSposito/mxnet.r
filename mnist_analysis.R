@@ -3,6 +3,7 @@ library(tidyverse)
 library(factoextra)
 library(plotly)
 library(class)
+library(caret)
 
 
 ### load database
@@ -68,7 +69,7 @@ for(i in 0:9) {
 
 # ploting the centroids
 par(mfrow=c(2,5), mar=c(0.1,0.1,0.1,0.1))
-lapply(X = centroids, show_digit)
+res <- lapply(X = centroids, show_digit)
 
 # compare cases
 compare <- crossing(comp1 = 0:9, comp2 = 0:9)
@@ -109,7 +110,16 @@ ts.x <- mnist$test$x
 all.x <- rbind(tr.x,ts.x)
 
 # calculating the PCA
-pca <- prcomp(all.x, center = T, scale. = T)
+
+# removing zero or near zero variance features
+nzv <- nearZeroVar(all.x, saveMetrics = T)
+print(paste0("Columns with zero variance: ", sum(nzv$zeroVar)))
+all.x <- all.x[,!nzv$zeroVar]
+
+# principal component analysis
+pca <- prcomp(all.x, center = T)
+saveRDS(pca, "pca.rds") # store to save time
+
 pca <- readRDS("pca.rds")
 
 # rebuilding features (transformed)
@@ -123,7 +133,7 @@ fviz_eig(pca)
 dev.off()
 hist((pca$sdev)/sum(pca$sdev), breaks = 100, col="Red")
 
-data_frame(x=1:784, sdev.cum=cumsum((pca$sdev)/sum(pca$sdev))) %>%
+data_frame(x=1:length(pca$sdev), sdev.cum=cumsum((pca$sdev)/sum(pca$sdev))) %>%
   plot_ly(x=~x,y=~sdev.cum) %>%
   add_lines()
 
@@ -143,7 +153,7 @@ cases %>%
 
 # cases more "distant"
 cases %>%
-  filter(label %in% c("0", "1", "4")) %>%
+  filter(label %in% c("0", "1")) %>%
   plot_ly(x=~x, y=~y, color=~label) %>%  
   add_markers()
 
@@ -158,7 +168,7 @@ part.idx <- sample(1:mnist$train$n, round(mnist$train$n/2))
 k <- seq(2,14, 2)
 n <- seq(5,80,10)
 
-cross.params <- crossing(k=k, n=n)[1:5,]
+cross.params <- crossing(k=k, n=n)
 
 result <- apply(X = cross.params,1, function(p, tr.idx = part.idx, x=tr.x, y=as.factor(mnist$train$y)){
   k_par <- as.integer(p[1])
@@ -178,4 +188,16 @@ result <- apply(X = cross.params,1, function(p, tr.idx = part.idx, x=tr.x, y=as.
   return(accuracy)
   
 })
+cv.results <- bind_cols(cross.params, accuracy=result)
+saveRDS(cv.results, "cv_result.rds")
+
+# ploting the error "surface"
+plot_ly(cv.results, x=~n, y=~k, z=~accuracy) %>%
+  add_markers()
+
+# which pair k and n are better ?
+cv.results[which(cv.results$accuracy==max(cv.results$accuracy)),]
+
+
+
 
